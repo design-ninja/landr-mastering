@@ -32,28 +32,49 @@
   font-weight: 600;
 }
 
-.status {
+.preload {
+  padding: 0.6rem 0.2rem 0.4rem;
+  display: grid;
+  justify-items: center;
+  gap: 0.75rem;
+}
+
+.preloadSpinner {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  border: 2px solid rgb(255 255 255 / 14%);
+  border-top-color: var(--accent);
+  animation: spin 900ms linear infinite;
+}
+
+.preloadTitle {
   margin: 0;
-  display: inline-flex;
-  justify-content: center;
-  align-items: center;
-  gap: 0.4rem;
-  font-size: 0.8rem;
+  color: var(--text-secondary);
+  font-size: 0.92rem;
+  text-align: center;
+}
+
+.preloadMeta {
+  margin: 0;
   color: var(--text-muted);
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
+  font-size: 0.82rem;
 }
 
-.dot {
-  width: 0.55rem;
-  height: 0.55rem;
-  border-radius: 50%;
-  background: rgb(255 255 255 / 18%);
+.preloadBar {
+  width: min(100%, 17rem);
+  height: 0.38rem;
+  border-radius: 999px;
+  background: var(--track-linear);
+  overflow: hidden;
 }
 
-.playing {
+.preloadBarFill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
   background: var(--accent);
-  box-shadow: 0 0 0.65rem rgb(34 216 224 / 60%);
+  transition: width 180ms ease;
 }
 
 .volumeWrap {
@@ -71,13 +92,6 @@
   padding: 0.58rem 0.7rem;
 }
 
-.helper {
-  margin: 0;
-  color: var(--text-muted);
-  text-align: center;
-  font-size: 0.79rem;
-}
-
 @keyframes reveal {
   from {
     opacity: 0;
@@ -87,5 +101,15 @@
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
   }
 }

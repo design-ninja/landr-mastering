@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { TrackId, TrackVariant } from '../types/audio'
 
 const SWITCH_TIME_PADDING = 0.05
-const INITIAL_VOLUME = 0.85
+const INITIAL_VOLUME = 0.7
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
 
@@ -14,6 +14,9 @@ export interface ComparePlayerController {
   duration: number
   volume: number
   isReady: boolean
+  isLibraryReady: boolean
+  readyTrackCount: number
+  totalTracks: number
   error: string | null
   togglePlay: () => void
   seek: (timeInSeconds: number) => void
@@ -27,9 +30,12 @@ export function useComparePlayer(tracks: TrackVariant[]): ComparePlayerControlle
   }
 
   const initialTrack = tracks[0]
+  const totalTracks = tracks.length
   const trackMap = useMemo(() => new Map(tracks.map((track) => [track.id, track])), [tracks])
-  const audioRef = useRef<HTMLAudioElement | null>(null)
-  const pendingSwitchListenerRef = useRef<(() => void) | null>(null)
+
+  const audiosRef = useRef<Map<TrackId, HTMLAudioElement>>(new Map())
+  const readyByTrackRef = useRef<Map<TrackId, boolean>>(new Map())
+  const activeTrackIdRef = useRef<TrackId>(initialTrack.id)
 
   const [activeTrackId, setActiveTrackId] = useState<TrackId>(initialTrack.id)
   const [isPlaying, setIsPlaying] = useState(false)
@@ -37,80 +43,147 @@ export function useComparePlayer(tracks: TrackVariant[]): ComparePlayerControlle
   const [duration, setDuration] = useState(0)
   const [volume, setVolumeState] = useState(INITIAL_VOLUME)
   const [isReady, setIsReady] = useState(false)
+  const [readyTrackCount, setReadyTrackCount] = useState(0)
   const [error, setError] = useState<string | null>(null)
 
+  const isLibraryReady = readyTrackCount >= totalTracks
+
   useEffect(() => {
-    const audio = new Audio(initialTrack.file)
-    audio.preload = 'metadata'
-    audio.volume = INITIAL_VOLUME
-    audioRef.current = audio
+    activeTrackIdRef.current = activeTrackId
+  }, [activeTrackId])
 
-    const handleLoadedMetadata = () => {
-      const nextDuration = Number.isFinite(audio.duration) ? audio.duration : 0
-      setDuration(nextDuration)
-      setCurrentTime(audio.currentTime || 0)
-      setIsReady(true)
-      setError(null)
-    }
+  useEffect(() => {
+    const audios = new Map<TrackId, HTMLAudioElement>()
+    const readyByTrack = new Map<TrackId, boolean>()
+    const cleanups: Array<() => void> = []
 
-    const handleTimeUpdate = () => {
-      setCurrentTime(audio.currentTime || 0)
-    }
-
-    const handlePlay = () => {
-      setIsPlaying(true)
-    }
-
-    const handlePause = () => {
-      setIsPlaying(false)
-    }
-
-    const handleEnded = () => {
-      setIsPlaying(false)
-      setCurrentTime(audio.duration || 0)
-    }
-
-    const handleError = () => {
-      setError('Audio failed to load')
-      setIsReady(false)
-      setIsPlaying(false)
-    }
-
-    audio.addEventListener('loadedmetadata', handleLoadedMetadata)
-    audio.addEventListener('timeupdate', handleTimeUpdate)
-    audio.addEventListener('play', handlePlay)
-    audio.addEventListener('pause', handlePause)
-    audio.addEventListener('ended', handleEnded)
-    audio.addEventListener('error', handleError)
-
-    audio.load()
-
-    return () => {
-      if (pendingSwitchListenerRef.current) {
-        audio.removeEventListener('loadedmetadata', pendingSwitchListenerRef.current)
-        pendingSwitchListenerRef.current = null
+    const markTrackReady = (trackId: TrackId) => {
+      if (readyByTrack.get(trackId)) {
+        return
       }
 
-      audio.pause()
-      audio.removeEventListener('loadedmetadata', handleLoadedMetadata)
-      audio.removeEventListener('timeupdate', handleTimeUpdate)
-      audio.removeEventListener('play', handlePlay)
-      audio.removeEventListener('pause', handlePause)
-      audio.removeEventListener('ended', handleEnded)
-      audio.removeEventListener('error', handleError)
-      audio.removeAttribute('src')
-      audio.load()
-      audioRef.current = null
+      readyByTrack.set(trackId, true)
+      setReadyTrackCount((prev) => Math.min(totalTracks, prev + 1))
+
+      if (activeTrackIdRef.current === trackId) {
+        setIsReady(true)
+      }
     }
-  }, [initialTrack.file])
+
+    tracks.forEach((track) => {
+      const audio = new Audio(track.file)
+      audio.preload = 'auto'
+      audio.volume = INITIAL_VOLUME
+
+      audios.set(track.id, audio)
+      readyByTrack.set(track.id, false)
+
+      const isActiveTrack = () => activeTrackIdRef.current === track.id
+
+      const handleLoadedMetadata = () => {
+        if (!isActiveTrack()) {
+          return
+        }
+
+        const nextDuration = Number.isFinite(audio.duration) ? audio.duration : 0
+        setDuration(nextDuration)
+        setCurrentTime(audio.currentTime || 0)
+      }
+
+      const handleCanPlayThrough = () => {
+        markTrackReady(track.id)
+
+        if (isActiveTrack()) {
+          setError(null)
+        }
+      }
+
+      const handleTimeUpdate = () => {
+        if (isActiveTrack()) {
+          setCurrentTime(audio.currentTime || 0)
+        }
+      }
+
+      const handlePlay = () => {
+        if (isActiveTrack()) {
+          setIsPlaying(true)
+        }
+      }
+
+      const handlePause = () => {
+        if (isActiveTrack()) {
+          setIsPlaying(false)
+        }
+      }
+
+      const handleEnded = () => {
+        if (!isActiveTrack()) {
+          return
+        }
+
+        setIsPlaying(false)
+        setCurrentTime(audio.duration || 0)
+      }
+
+      const handleError = () => {
+        markTrackReady(track.id)
+
+        if (isActiveTrack()) {
+          setError('Audio failed to load')
+          setIsReady(false)
+          setIsPlaying(false)
+        }
+      }
+
+      audio.addEventListener('loadedmetadata', handleLoadedMetadata)
+      audio.addEventListener('canplaythrough', handleCanPlayThrough)
+      audio.addEventListener('timeupdate', handleTimeUpdate)
+      audio.addEventListener('play', handlePlay)
+      audio.addEventListener('pause', handlePause)
+      audio.addEventListener('ended', handleEnded)
+      audio.addEventListener('error', handleError)
+      audio.load()
+
+      cleanups.push(() => {
+        audio.pause()
+        audio.removeEventListener('loadedmetadata', handleLoadedMetadata)
+        audio.removeEventListener('canplaythrough', handleCanPlayThrough)
+        audio.removeEventListener('timeupdate', handleTimeUpdate)
+        audio.removeEventListener('play', handlePlay)
+        audio.removeEventListener('pause', handlePause)
+        audio.removeEventListener('ended', handleEnded)
+        audio.removeEventListener('error', handleError)
+        audio.removeAttribute('src')
+        audio.load()
+      })
+    })
+
+    audiosRef.current = audios
+    readyByTrackRef.current = readyByTrack
+
+    return () => {
+      cleanups.forEach((cleanup) => cleanup())
+      audiosRef.current = new Map()
+      readyByTrackRef.current = new Map()
+    }
+  }, [tracks, totalTracks])
+
+  const pauseOtherTracks = useCallback((keepTrackId: TrackId) => {
+    audiosRef.current.forEach((audio, trackId) => {
+      if (trackId !== keepTrackId && !audio.paused) {
+        audio.pause()
+      }
+    })
+  }, [])
 
   const togglePlay = useCallback(() => {
-    const audio = audioRef.current
+    const audio = audiosRef.current.get(activeTrackId)
     if (!audio) {
       return
     }
 
     if (audio.paused) {
+      pauseOtherTracks(activeTrackId)
       void audio.play().catch(() => {
         setError('Audio failed to play')
         setIsPlaying(false)
@@ -119,11 +192,11 @@ export function useComparePlayer(tracks: TrackVariant[]): ComparePlayerControlle
     }
 
     audio.pause()
-  }, [])
+  }, [activeTrackId, pauseOtherTracks])
 
   const seek = useCallback(
     (timeInSeconds: number) => {
-      const audio = audioRef.current
+      const audio = audiosRef.current.get(activeTrackId)
       if (!audio || duration <= 0) {
         return
       }
@@ -132,71 +205,93 @@ export function useComparePlayer(tracks: TrackVariant[]): ComparePlayerControlle
       audio.currentTime = safeTime
       setCurrentTime(safeTime)
     },
-    [duration],
+    [activeTrackId, duration],
   )
 
   const setVolume = useCallback((nextVolume: number) => {
     const safeVolume = clamp(nextVolume, 0, 1)
-    const audio = audioRef.current
 
     setVolumeState(safeVolume)
-    if (audio) {
+    audiosRef.current.forEach((audio) => {
       audio.volume = safeVolume
-    }
+    })
   }, [])
 
   const switchTrack = useCallback(
     (nextTrackId: TrackId) => {
-      const audio = audioRef.current
-      if (!audio || nextTrackId === activeTrackId) {
+      if (nextTrackId === activeTrackId) {
         return
       }
 
-      const targetTrack = trackMap.get(nextTrackId)
-      if (!targetTrack) {
+      const currentAudio = audiosRef.current.get(activeTrackId)
+      const nextAudio = audiosRef.current.get(nextTrackId)
+      if (!nextAudio) {
         return
       }
 
-      const prevTime = audio.currentTime || 0
-      const wasPlaying = !audio.paused && !audio.ended
+      const prevTime = currentAudio?.currentTime ?? currentTime
+      const wasPlaying = currentAudio ? !currentAudio.paused && !currentAudio.ended : isPlaying
 
-      if (pendingSwitchListenerRef.current) {
-        audio.removeEventListener('loadedmetadata', pendingSwitchListenerRef.current)
-        pendingSwitchListenerRef.current = null
+      if (currentAudio && !currentAudio.paused) {
+        currentAudio.pause()
       }
 
-      const handleSwitchLoaded = () => {
-        audio.removeEventListener('loadedmetadata', handleSwitchLoaded)
-        const nextDuration = Number.isFinite(audio.duration) ? audio.duration : 0
+      const applySwitchTime = () => {
+        const nextDuration = Number.isFinite(nextAudio.duration) ? nextAudio.duration : 0
         const safeMaxTime = Math.max(0, nextDuration - SWITCH_TIME_PADDING)
         const nextTime = clamp(prevTime, 0, safeMaxTime)
 
-        audio.currentTime = nextTime
+        nextAudio.currentTime = nextTime
         setCurrentTime(nextTime)
         setDuration(nextDuration)
-        setIsReady(true)
-        pendingSwitchListenerRef.current = null
-
-        if (wasPlaying) {
-          void audio.play().catch(() => {
-            setError('Audio failed to play')
-            setIsPlaying(false)
-          })
-        }
       }
 
-      pendingSwitchListenerRef.current = handleSwitchLoaded
-      audio.addEventListener('loadedmetadata', handleSwitchLoaded)
+      const playTargetIfNeeded = () => {
+        if (!wasPlaying) {
+          return
+        }
+
+        pauseOtherTracks(nextTrackId)
+        void nextAudio.play().catch(() => {
+          if (activeTrackIdRef.current === nextTrackId) {
+            setError('Audio failed to play')
+            setIsPlaying(false)
+          }
+        })
+      }
 
       setError(null)
-      setIsReady(false)
+      setActiveTrackId(nextTrackId)
+      activeTrackIdRef.current = nextTrackId
+
+      const isNextReady = readyByTrackRef.current.get(nextTrackId) ?? false
+      setIsReady(isNextReady)
+
+      if (isNextReady) {
+        applySwitchTime()
+        playTargetIfNeeded()
+        return
+      }
+
       setDuration(0)
       setCurrentTime(prevTime)
-      setActiveTrackId(nextTrackId)
-      audio.src = targetTrack.file
-      audio.load()
+
+      const handleReady = () => {
+        nextAudio.removeEventListener('canplaythrough', handleReady)
+
+        if (activeTrackIdRef.current !== nextTrackId) {
+          return
+        }
+
+        readyByTrackRef.current.set(nextTrackId, true)
+        setIsReady(true)
+        applySwitchTime()
+        playTargetIfNeeded()
+      }
+
+      nextAudio.addEventListener('canplaythrough', handleReady)
     },
-    [activeTrackId, trackMap],
+    [activeTrackId, currentTime, isPlaying, pauseOtherTracks],
   )
 
   const activeTrack = trackMap.get(activeTrackId) ?? initialTrack
@@ -209,6 +304,9 @@ export function useComparePlayer(tracks: TrackVariant[]): ComparePlayerControlle
     duration,
     volume,
     isReady,
+    isLibraryReady,
+    readyTrackCount,
+    totalTracks,
     error,
     togglePlay,
     seek,
