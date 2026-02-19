@@ -1,0 +1,91 @@
+.card {
+  border-radius: 1.35rem;
+  border: 1px solid var(--border-muted);
+  background: linear-gradient(155deg, rgb(255 255 255 / 3%), rgb(255 255 255 / 1%));
+  box-shadow: 0 34px 54px -38px rgb(0 0 0 / 78%);
+  backdrop-filter: blur(9px);
+  padding: clamp(1.35rem, 4vw, 2rem) clamp(1rem, 3vw, 1.5rem);
+  display: grid;
+  gap: 1rem;
+  animation: reveal 420ms ease both;
+}
+
+.header {
+  text-align: center;
+  display: grid;
+  gap: 0.32rem;
+}
+
+.fileName {
+  margin: 0;
+  color: var(--text-muted);
+  opacity: 0.82;
+  font-size: 1.02rem;
+  font-weight: 500;
+}
+
+.mode {
+  margin: 0;
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: 1.48rem;
+  font-weight: 600;
+}
+
+.status {
+  margin: 0;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 18%);
+}
+
+.playing {
+  background: var(--accent);
+  box-shadow: 0 0 0.65rem rgb(34 216 224 / 60%);
+}
+
+.volumeWrap {
+  margin-top: 0.65rem;
+}
+
+.error {
+  margin: 0;
+  border-radius: 0.7rem;
+  border: 1px solid rgb(255 111 111 / 50%);
+  background: rgb(255 111 111 / 9%);
+  color: var(--danger);
+  font-size: 0.84rem;
+  text-align: center;
+  padding: 0.58rem 0.7rem;
+}
+
+.helper {
+  margin: 0;
+  color: var(--text-muted);
+  text-align: center;
+  font-size: 0.79rem;
+}
+
+@keyframes reveal {
+  from {
+    opacity: 0;
+    transform: translateY(0.7rem);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

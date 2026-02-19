@@ -1,0 +1,26 @@
+.page {
+  position: relative;
+  min-height: 100svh;
+  padding: clamp(1rem, 2vw, 2rem);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+.radialGlow {
+  position: absolute;
+  inset: auto;
+  width: min(55rem, 95vw);
+  height: min(55rem, 95vw);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgb(34 216 224 / 16%) 0%, rgb(34 216 224 / 0%) 65%);
+  transform: translateY(-16%);
+  pointer-events: none;
+}
+
+.layout {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 32.5rem);
+  display: grid;
+}

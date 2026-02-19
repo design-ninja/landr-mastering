@@ -1,0 +1,110 @@
+.wrapper {
+  position: relative;
+  width: clamp(14.5rem, 48vw, 18rem);
+  aspect-ratio: 1;
+  margin-inline: auto;
+}
+
+.ring {
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.track {
+  fill: none;
+  stroke: var(--track-ring);
+  stroke-width: 6;
+}
+
+.progress {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 6;
+  stroke-linecap: round;
+  transform-origin: center;
+  transform: rotate(-90deg);
+  transition: stroke-dashoffset 180ms ease;
+}
+
+.progressNoAnimation {
+  transition: none;
+}
+
+.knob {
+  fill: var(--accent);
+  stroke: rgb(9 16 26 / 75%);
+  stroke-width: 2;
+  filter: drop-shadow(0 0 0.6rem rgb(34 216 224 / 60%));
+}
+
+.button {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  width: 8.7rem;
+  height: 8.7rem;
+  transform: translate(-50%, -50%);
+  border: none;
+  border-radius: 999px;
+  background: var(--button-bg);
+  color: var(--button-icon);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  box-shadow: 0 24px 45px -28px rgb(0 0 0 / 75%);
+  transition: transform 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
+}
+
+.button:hover {
+  transform: translate(-50%, -50%) scale(1.02);
+  background: var(--button-bg-hover);
+}
+
+.button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 4px;
+}
+
+.playIcon {
+  width: 2.45rem;
+  height: 2.45rem;
+  transform: translate(0.02rem, 0.08rem);
+}
+
+.playIcon path {
+  fill: currentcolor;
+  filter: drop-shadow(0 0.1rem 0.1rem rgb(0 0 0 / 16%));
+}
+
+.pauseIcon {
+  width: 1.6rem;
+  height: 1.6rem;
+  position: relative;
+}
+
+.pauseIcon::before,
+.pauseIcon::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  width: 0.44rem;
+  height: 1.6rem;
+  background: currentcolor;
+  border-radius: 0.24rem;
+}
+
+.pauseIcon::before {
+  left: 0.22rem;
+}
+
+.pauseIcon::after {
+  right: 0.22rem;
+}
+
+@media (max-width: 30rem) {
+  .button {
+    width: 7.6rem;
+    height: 7.6rem;
+  }
+}
