@@ -1,346 +1,499 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { TrackId, TrackVariant } from '../types/audio';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { TrackId, TrackVariant } from '../types/audio'
 
-const SWITCH_TIME_PADDING = 0.05;
-const INITIAL_VOLUME = 0.7;
-const SEAMLESS_SWITCH_OFFSET_SECONDS = 0.18;
+const SWITCH_TIME_PADDING = 0.05
+const INITIAL_VOLUME = 0.7
+const SWITCH_CROSSFADE_SECONDS = 0.015
+const START_LEAD_TIME_SECONDS = 0.005
 
-const clamp = (value: number, min: number, max: number) =>
-  Math.min(max, Math.max(min, value));
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
 
-export interface ComparePlayerController {
-  activeTrackId: TrackId;
-  activeTrack: TrackVariant;
-  isPlaying: boolean;
-  currentTime: number;
-  duration: number;
-  volume: number;
-  isReady: boolean;
-  isLibraryReady: boolean;
-  readyTrackCount: number;
-  totalTracks: number;
-  error: string | null;
-  togglePlay: () => void;
-  seek: (timeInSeconds: number) => void;
-  setVolume: (nextVolume: number) => void;
-  switchTrack: (nextTrackId: TrackId) => void;
+type ActivePlayback = {
+  gain: GainNode
+  id: number
+  source: AudioBufferSourceNode
 }
 
-export function useComparePlayer(
-  tracks: TrackVariant[],
-): ComparePlayerController {
+export interface ComparePlayerController {
+  activeTrackId: TrackId
+  activeTrack: TrackVariant
+  isPlaying: boolean
+  currentTime: number
+  duration: number
+  volume: number
+  isReady: boolean
+  isLibraryReady: boolean
+  readyTrackCount: number
+  totalTracks: number
+  error: string | null
+  togglePlay: () => void
+  seek: (timeInSeconds: number) => void
+  setVolume: (nextVolume: number) => void
+  switchTrack: (nextTrackId: TrackId) => void
+}
+
+export function useComparePlayer(tracks: TrackVariant[]): ComparePlayerController {
   if (!tracks.length) {
-    throw new Error('useComparePlayer requires at least one track');
+    throw new Error('useComparePlayer requires at least one track')
   }
 
-  const initialTrack = tracks[0];
-  const totalTracks = tracks.length;
-  const trackMap = useMemo(
-    () => new Map(tracks.map((track) => [track.id, track])),
-    [tracks],
-  );
+  const initialTrack = tracks[0]
+  const totalTracks = tracks.length
+  const trackMap = useMemo(() => new Map(tracks.map((track) => [track.id, track])), [tracks])
 
-  const audiosRef = useRef<Map<TrackId, HTMLAudioElement>>(new Map());
-  const readyByTrackRef = useRef<Map<TrackId, boolean>>(new Map());
-  const activeTrackIdRef = useRef<TrackId>(initialTrack.id);
+  const audioContextRef = useRef<AudioContext | null>(null)
+  const masterGainRef = useRef<GainNode | null>(null)
+  const buffersRef = useRef<Map<TrackId, AudioBuffer>>(new Map())
 
-  const [activeTrackId, setActiveTrackId] = useState<TrackId>(initialTrack.id);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const [volume, setVolumeState] = useState(INITIAL_VOLUME);
-  const [isReady, setIsReady] = useState(false);
-  const [readyTrackCount, setReadyTrackCount] = useState(0);
-  const [error, setError] = useState<string | null>(null);
+  const activeTrackIdRef = useRef<TrackId>(initialTrack.id)
+  const isPlayingRef = useRef(false)
+  const volumeRef = useRef(INITIAL_VOLUME)
 
-  const isLibraryReady = readyTrackCount >= totalTracks;
+  const playbackRef = useRef<ActivePlayback | null>(null)
+  const playbackIdRef = useRef(0)
+  const animationFrameRef = useRef<number | null>(null)
+
+  const transportOffsetRef = useRef(0)
+  const transportStartContextTimeRef = useRef(0)
+
+  const [activeTrackId, setActiveTrackId] = useState<TrackId>(initialTrack.id)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [currentTime, setCurrentTime] = useState(0)
+  const [duration, setDuration] = useState(0)
+  const [volume, setVolumeState] = useState(INITIAL_VOLUME)
+  const [isReady, setIsReady] = useState(false)
+  const [readyTrackCount, setReadyTrackCount] = useState(0)
+  const [error, setError] = useState<string | null>(null)
+
+  const isLibraryReady = readyTrackCount >= totalTracks
 
   useEffect(() => {
-    activeTrackIdRef.current = activeTrackId;
-  }, [activeTrackId]);
+    activeTrackIdRef.current = activeTrackId
+  }, [activeTrackId])
 
   useEffect(() => {
-    const audios = new Map<TrackId, HTMLAudioElement>();
-    const readyByTrack = new Map<TrackId, boolean>();
-    const cleanups: Array<() => void> = [];
+    isPlayingRef.current = isPlaying
+  }, [isPlaying])
 
-    const markTrackReady = (trackId: TrackId) => {
-      if (readyByTrack.get(trackId)) {
-        return;
+  const ensureAudioContext = useCallback(() => {
+    if (audioContextRef.current) {
+      return audioContextRef.current
+    }
+
+    const context = new AudioContext()
+    const masterGain = context.createGain()
+    masterGain.gain.value = volumeRef.current
+    masterGain.connect(context.destination)
+
+    audioContextRef.current = context
+    masterGainRef.current = masterGain
+
+    return context
+  }, [])
+
+  const getTrackDuration = useCallback((trackId: TrackId) => buffersRef.current.get(trackId)?.duration ?? 0, [])
+
+  const getTransportTime = useCallback(
+    (trackId: TrackId, context: AudioContext | null) => {
+      const trackDuration = getTrackDuration(trackId)
+      if (trackDuration <= 0) {
+        return 0
       }
 
-      readyByTrack.set(trackId, true);
-      setReadyTrackCount((prev) => Math.min(totalTracks, prev + 1));
-
-      if (activeTrackIdRef.current === trackId) {
-        setIsReady(true);
+      if (!isPlayingRef.current || !context) {
+        return clamp(transportOffsetRef.current, 0, trackDuration)
       }
-    };
+
+      const elapsed = Math.max(0, context.currentTime - transportStartContextTimeRef.current)
+      const nextTime = transportOffsetRef.current + elapsed
+
+      return clamp(nextTime, 0, trackDuration)
+    },
+    [getTrackDuration],
+  )
+
+  const pauseNonActiveSources = useCallback((keepPlaybackId: number | null) => {
+    const activePlayback = playbackRef.current
+    if (!activePlayback) {
+      return
+    }
+
+    if (keepPlaybackId !== null && activePlayback.id === keepPlaybackId) {
+      return
+    }
+
+    try {
+      activePlayback.source.stop()
+    } catch {
+      // Ignore DOMException when source was already stopped.
+    }
+
+    playbackRef.current = null
+  }, [])
+
+  const scheduleStopPlayback = useCallback(
+    (playback: ActivePlayback | null, context: AudioContext, when: number, fadeOutSeconds: number) => {
+      if (!playback) {
+        return
+      }
+
+      const now = context.currentTime
+      const stopAt = Math.max(when, now)
+      const currentGainValue = playback.gain.gain.value
+
+      playback.gain.gain.cancelScheduledValues(stopAt)
+      playback.gain.gain.setValueAtTime(currentGainValue, stopAt)
+      playback.gain.gain.linearRampToValueAtTime(0, stopAt + fadeOutSeconds)
+
+      try {
+        playback.source.stop(stopAt + fadeOutSeconds + 0.002)
+      } catch {
+        // Ignore DOMException when source was already stopped.
+      }
+    },
+    [],
+  )
+
+  const createPlayback = useCallback(
+    (trackId: TrackId, when: number, offset: number, fadeInSeconds: number) => {
+      const context = audioContextRef.current
+      const masterGain = masterGainRef.current
+      const buffer = buffersRef.current.get(trackId)
+
+      if (!context || !masterGain || !buffer) {
+        return null
+      }
+
+      const safeMaxOffset = Math.max(0, buffer.duration - SWITCH_TIME_PADDING)
+      const safeOffset = clamp(offset, 0, safeMaxOffset)
+
+      const source = context.createBufferSource()
+      const gain = context.createGain()
+
+      source.buffer = buffer
+      source.connect(gain)
+      gain.connect(masterGain)
+
+      const startAt = Math.max(when, context.currentTime)
+      gain.gain.cancelScheduledValues(startAt)
+
+      if (fadeInSeconds > 0) {
+        gain.gain.setValueAtTime(0, startAt)
+        gain.gain.linearRampToValueAtTime(1, startAt + fadeInSeconds)
+      } else {
+        gain.gain.setValueAtTime(1, startAt)
+      }
+
+      const playbackId = ++playbackIdRef.current
+
+      source.onended = () => {
+        if (playbackRef.current?.id !== playbackId) {
+          return
+        }
+
+        playbackRef.current = null
+
+        if (!isPlayingRef.current) {
+          return
+        }
+
+        const currentDuration = getTrackDuration(trackId)
+        transportOffsetRef.current = currentDuration
+        setCurrentTime(currentDuration)
+        setIsPlaying(false)
+      }
+
+      source.start(startAt, safeOffset)
+
+      return {
+        startAt,
+        startOffset: safeOffset,
+        playback: {
+          gain,
+          id: playbackId,
+          source,
+        } satisfies ActivePlayback,
+      }
+    },
+    [getTrackDuration],
+  )
+
+  useEffect(() => {
+    const context = ensureAudioContext()
+    let isDisposed = false
+
+    const decodeCache = new Map<string, Promise<AudioBuffer>>()
+
+    const decodeFile = (file: string) => {
+      const cached = decodeCache.get(file)
+      if (cached) {
+        return cached
+      }
+
+      const promise = fetch(file)
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error(`Failed to fetch ${file}`)
+          }
+
+          return response.arrayBuffer()
+        })
+        .then((arrayBuffer) => context.decodeAudioData(arrayBuffer))
+
+      decodeCache.set(file, promise)
+      return promise
+    }
 
     tracks.forEach((track) => {
-      const audio = new Audio(track.file);
-      audio.preload = 'auto';
-      audio.volume = INITIAL_VOLUME;
+      decodeFile(track.file)
+        .then((buffer) => {
+          if (isDisposed) {
+            return
+          }
 
-      audios.set(track.id, audio);
-      readyByTrack.set(track.id, false);
+          buffersRef.current.set(track.id, buffer)
 
-      const isActiveTrack = () => activeTrackIdRef.current === track.id;
+          if (activeTrackIdRef.current === track.id) {
+            const safeTime = clamp(transportOffsetRef.current, 0, Math.max(0, buffer.duration - SWITCH_TIME_PADDING))
+            transportOffsetRef.current = safeTime
+            setDuration(buffer.duration)
+            setCurrentTime(safeTime)
+            setIsReady(true)
+          }
+        })
+        .catch(() => {
+          if (isDisposed) {
+            return
+          }
 
-      const handleLoadedMetadata = () => {
-        if (!isActiveTrack()) {
-          return;
-        }
+          if (activeTrackIdRef.current === track.id) {
+            setError('Audio failed to load')
+            setIsReady(false)
+          }
+        })
+        .finally(() => {
+          if (isDisposed) {
+            return
+          }
 
-        const nextDuration = Number.isFinite(audio.duration)
-          ? audio.duration
-          : 0;
-        setDuration(nextDuration);
-        setCurrentTime(audio.currentTime || 0);
-      };
-
-      const handleCanPlayThrough = () => {
-        markTrackReady(track.id);
-
-        if (isActiveTrack()) {
-          setError(null);
-        }
-      };
-
-      const handleTimeUpdate = () => {
-        if (isActiveTrack()) {
-          setCurrentTime(audio.currentTime || 0);
-        }
-      };
-
-      const handlePlay = () => {
-        if (isActiveTrack()) {
-          setIsPlaying(true);
-        }
-      };
-
-      const handlePause = () => {
-        if (isActiveTrack()) {
-          setIsPlaying(false);
-        }
-      };
-
-      const handleEnded = () => {
-        if (!isActiveTrack()) {
-          return;
-        }
-
-        setIsPlaying(false);
-        setCurrentTime(audio.duration || 0);
-      };
-
-      const handleError = () => {
-        markTrackReady(track.id);
-
-        if (isActiveTrack()) {
-          setError('Audio failed to load');
-          setIsReady(false);
-          setIsPlaying(false);
-        }
-      };
-
-      audio.addEventListener('loadedmetadata', handleLoadedMetadata);
-      audio.addEventListener('canplaythrough', handleCanPlayThrough);
-      audio.addEventListener('timeupdate', handleTimeUpdate);
-      audio.addEventListener('play', handlePlay);
-      audio.addEventListener('pause', handlePause);
-      audio.addEventListener('ended', handleEnded);
-      audio.addEventListener('error', handleError);
-      audio.load();
-
-      cleanups.push(() => {
-        audio.pause();
-        audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
-        audio.removeEventListener('canplaythrough', handleCanPlayThrough);
-        audio.removeEventListener('timeupdate', handleTimeUpdate);
-        audio.removeEventListener('play', handlePlay);
-        audio.removeEventListener('pause', handlePause);
-        audio.removeEventListener('ended', handleEnded);
-        audio.removeEventListener('error', handleError);
-        audio.removeAttribute('src');
-        audio.load();
-      });
-    });
-
-    audiosRef.current = audios;
-    readyByTrackRef.current = readyByTrack;
+          setReadyTrackCount((prev) => Math.min(totalTracks, prev + 1))
+        })
+    })
 
     return () => {
-      cleanups.forEach((cleanup) => cleanup());
-      audiosRef.current = new Map();
-      readyByTrackRef.current = new Map();
-    };
-  }, [tracks, totalTracks]);
+      isDisposed = true
+    }
+  }, [ensureAudioContext, totalTracks, tracks])
 
-  const pauseTracksExcept = useCallback((keepTrackIds: TrackId[]) => {
-    const keepSet = new Set<TrackId>(keepTrackIds);
-
-    audiosRef.current.forEach((audio, trackId) => {
-      if (!keepSet.has(trackId) && !audio.paused) {
-        audio.pause();
+  useEffect(() => {
+    const update = () => {
+      if (isPlayingRef.current) {
+        const context = audioContextRef.current
+        const nextTime = getTransportTime(activeTrackIdRef.current, context)
+        setCurrentTime(nextTime)
       }
-    });
-  }, []);
+
+      animationFrameRef.current = window.requestAnimationFrame(update)
+    }
+
+    animationFrameRef.current = window.requestAnimationFrame(update)
+
+    return () => {
+      if (animationFrameRef.current !== null) {
+        window.cancelAnimationFrame(animationFrameRef.current)
+        animationFrameRef.current = null
+      }
+    }
+  }, [getTransportTime])
+
+  useEffect(() => {
+    return () => {
+      const context = audioContextRef.current
+
+      if (playbackRef.current && context) {
+        scheduleStopPlayback(playbackRef.current, context, context.currentTime, 0)
+      }
+
+      pauseNonActiveSources(null)
+
+      if (context) {
+        void context.close()
+      }
+
+      audioContextRef.current = null
+      masterGainRef.current = null
+      buffersRef.current = new Map()
+    }
+  }, [pauseNonActiveSources, scheduleStopPlayback])
 
   const togglePlay = useCallback(() => {
-    const audio = audiosRef.current.get(activeTrackId);
-    if (!audio) {
-      return;
+    const context = ensureAudioContext()
+
+    if (!isLibraryReady) {
+      return
     }
 
-    if (audio.paused) {
-      pauseTracksExcept([activeTrackId]);
-      void audio.play().catch(() => {
-        setError('Audio failed to play');
-        setIsPlaying(false);
-      });
-      return;
+    const activeId = activeTrackIdRef.current
+    const activeBuffer = buffersRef.current.get(activeId)
+
+    if (!activeBuffer) {
+      setError('Audio failed to load')
+      return
     }
 
-    audio.pause();
-  }, [activeTrackId, pauseTracksExcept]);
+    if (isPlayingRef.current) {
+      const pausedAt = getTransportTime(activeId, context)
+      transportOffsetRef.current = pausedAt
+      setCurrentTime(pausedAt)
+      setIsPlaying(false)
+
+      if (playbackRef.current) {
+        scheduleStopPlayback(playbackRef.current, context, context.currentTime, SWITCH_CROSSFADE_SECONDS)
+        playbackRef.current = null
+      }
+
+      return
+    }
+
+    const startPlayback = () => {
+      const maxOffset = Math.max(0, activeBuffer.duration - SWITCH_TIME_PADDING)
+      let startOffset = clamp(transportOffsetRef.current, 0, maxOffset)
+
+      if (startOffset >= maxOffset) {
+        startOffset = 0
+      }
+
+      const startAt = context.currentTime + START_LEAD_TIME_SECONDS
+      const nextPlayback = createPlayback(activeId, startAt, startOffset, SWITCH_CROSSFADE_SECONDS)
+
+      if (!nextPlayback) {
+        setError('Audio failed to play')
+        return
+      }
+
+      pauseNonActiveSources(nextPlayback.playback.id)
+      playbackRef.current = nextPlayback.playback
+      transportOffsetRef.current = nextPlayback.startOffset
+      transportStartContextTimeRef.current = nextPlayback.startAt
+      setIsPlaying(true)
+      setError(null)
+    }
+
+    if (context.state === 'suspended') {
+      void context.resume().then(startPlayback).catch(() => {
+        setError('Audio failed to play')
+        setIsPlaying(false)
+      })
+      return
+    }
+
+    startPlayback()
+  }, [createPlayback, ensureAudioContext, getTransportTime, isLibraryReady, pauseNonActiveSources, scheduleStopPlayback])
 
   const seek = useCallback(
     (timeInSeconds: number) => {
-      const audio = audiosRef.current.get(activeTrackId);
-      if (!audio || duration <= 0) {
-        return;
+      const activeId = activeTrackIdRef.current
+      const activeBuffer = buffersRef.current.get(activeId)
+      if (!activeBuffer) {
+        return
       }
 
-      const safeTime = clamp(timeInSeconds, 0, duration);
-      audio.currentTime = safeTime;
-      setCurrentTime(safeTime);
+      const safeTime = clamp(timeInSeconds, 0, activeBuffer.duration)
+      transportOffsetRef.current = safeTime
+      setCurrentTime(safeTime)
+
+      if (!isPlayingRef.current) {
+        return
+      }
+
+      const context = audioContextRef.current
+      if (!context) {
+        return
+      }
+
+      const switchAt = context.currentTime + START_LEAD_TIME_SECONDS
+      const oldPlayback = playbackRef.current
+      const nextPlayback = createPlayback(activeId, switchAt, safeTime, SWITCH_CROSSFADE_SECONDS)
+      if (!nextPlayback) {
+        return
+      }
+
+      playbackRef.current = nextPlayback.playback
+      transportOffsetRef.current = nextPlayback.startOffset
+      transportStartContextTimeRef.current = nextPlayback.startAt
+
+      if (oldPlayback) {
+        scheduleStopPlayback(oldPlayback, context, switchAt, SWITCH_CROSSFADE_SECONDS)
+      }
     },
-    [activeTrackId, duration],
-  );
+    [createPlayback, scheduleStopPlayback],
+  )
 
   const setVolume = useCallback((nextVolume: number) => {
-    const safeVolume = clamp(nextVolume, 0, 1);
+    const safeVolume = clamp(nextVolume, 0, 1)
+    const context = audioContextRef.current
+    const masterGain = masterGainRef.current
 
-    setVolumeState(safeVolume);
-    audiosRef.current.forEach((audio) => {
-      audio.volume = safeVolume;
-    });
-  }, []);
+    volumeRef.current = safeVolume
+    setVolumeState(safeVolume)
+
+    if (!masterGain || !context) {
+      return
+    }
+
+    masterGain.gain.cancelScheduledValues(context.currentTime)
+    masterGain.gain.setTargetAtTime(safeVolume, context.currentTime, 0.01)
+  }, [])
 
   const switchTrack = useCallback(
     (nextTrackId: TrackId) => {
-      if (nextTrackId === activeTrackId) {
-        return;
+      const currentTrackId = activeTrackIdRef.current
+      if (nextTrackId === currentTrackId) {
+        return
       }
 
-      const currentAudio = audiosRef.current.get(activeTrackId);
-      const nextAudio = audiosRef.current.get(nextTrackId);
-      if (!nextAudio) {
-        return;
+      const context = audioContextRef.current
+      const nextBuffer = buffersRef.current.get(nextTrackId)
+      const nextDuration = nextBuffer?.duration ?? 0
+
+      const transportTime = context ? getTransportTime(currentTrackId, context) : transportOffsetRef.current
+      const maxOffset = Math.max(0, nextDuration - SWITCH_TIME_PADDING)
+      const nextOffset = clamp(transportTime, 0, maxOffset)
+
+      setActiveTrackId(nextTrackId)
+      activeTrackIdRef.current = nextTrackId
+
+      transportOffsetRef.current = nextOffset
+      setCurrentTime(nextOffset)
+      setDuration(nextDuration)
+      setIsReady(Boolean(nextBuffer))
+      setError(nextBuffer ? null : 'Audio failed to load')
+
+      if (!isPlayingRef.current || !context || !nextBuffer) {
+        return
       }
 
-      const prevTime = currentAudio?.currentTime ?? currentTime;
-      const wasPlaying = currentAudio
-        ? !currentAudio.paused && !currentAudio.ended
-        : isPlaying;
-
-      const applySwitchTime = (targetTime: number) => {
-        const nextDuration = Number.isFinite(nextAudio.duration)
-          ? nextAudio.duration
-          : 0;
-        const safeMaxTime = Math.max(0, nextDuration - SWITCH_TIME_PADDING);
-        const nextTime = clamp(targetTime, 0, safeMaxTime);
-
-        nextAudio.currentTime = nextTime;
-        setCurrentTime(nextTime);
-        setDuration(nextDuration);
-      };
-
-      setError(null);
-      setActiveTrackId(nextTrackId);
-      activeTrackIdRef.current = nextTrackId;
-
-      const isNextReady = readyByTrackRef.current.get(nextTrackId) ?? false;
-      setIsReady(isNextReady);
-
-      const runSwitch = () => {
-        if (!wasPlaying) {
-          pauseTracksExcept([]);
-          nextAudio.pause();
-          applySwitchTime(prevTime);
-          return;
-        }
-
-        if (!currentAudio) {
-          applySwitchTime(prevTime + SEAMLESS_SWITCH_OFFSET_SECONDS);
-          pauseTracksExcept([nextTrackId]);
-          void nextAudio.play().catch(() => {
-            if (activeTrackIdRef.current === nextTrackId) {
-              setError('Audio failed to play');
-              setIsPlaying(false);
-            }
-          });
-          return;
-        }
-
-        // Keep current audio running until target track is actually playing,
-        // then swap to avoid audible "jump back" artifacts.
-        pauseTracksExcept([activeTrackId, nextTrackId]);
-        nextAudio.volume = 0;
-        applySwitchTime(
-          currentAudio.currentTime + SEAMLESS_SWITCH_OFFSET_SECONDS,
-        );
-
-        void nextAudio
-          .play()
-          .then(() => {
-            if (activeTrackIdRef.current !== nextTrackId) {
-              return;
-            }
-
-            applySwitchTime(
-              currentAudio.currentTime + SEAMLESS_SWITCH_OFFSET_SECONDS,
-            );
-            nextAudio.volume = volume;
-            currentAudio.pause();
-            pauseTracksExcept([nextTrackId]);
-          })
-          .catch(() => {
-            nextAudio.volume = volume;
-            if (activeTrackIdRef.current === nextTrackId) {
-              setError('Audio failed to play');
-              setIsPlaying(false);
-            }
-          });
-      };
-
-      if (isNextReady) {
-        runSwitch();
-        return;
+      const switchAt = context.currentTime + START_LEAD_TIME_SECONDS
+      const oldPlayback = playbackRef.current
+      const nextPlayback = createPlayback(nextTrackId, switchAt, nextOffset, SWITCH_CROSSFADE_SECONDS)
+      if (!nextPlayback) {
+        setError('Audio failed to play')
+        setIsPlaying(false)
+        return
       }
 
-      setDuration(0);
-      setCurrentTime(prevTime);
+      playbackRef.current = nextPlayback.playback
+      transportOffsetRef.current = nextPlayback.startOffset
+      transportStartContextTimeRef.current = nextPlayback.startAt
 
-      const handleReady = () => {
-        nextAudio.removeEventListener('canplaythrough', handleReady);
-
-        if (activeTrackIdRef.current !== nextTrackId) {
-          return;
-        }
-
-        readyByTrackRef.current.set(nextTrackId, true);
-        setIsReady(true);
-        runSwitch();
-      };
-
-      nextAudio.addEventListener('canplaythrough', handleReady);
+      if (oldPlayback) {
+        scheduleStopPlayback(oldPlayback, context, switchAt, SWITCH_CROSSFADE_SECONDS)
+      }
     },
-    [activeTrackId, currentTime, isPlaying, pauseTracksExcept, volume],
-  );
+    [createPlayback, getTransportTime, scheduleStopPlayback],
+  )
 
-  const activeTrack = trackMap.get(activeTrackId) ?? initialTrack;
+  const activeTrack = trackMap.get(activeTrackId) ?? initialTrack
 
   return {
     activeTrackId,
@@ -358,5 +511,5 @@ export function useComparePlayer(
     seek,
     setVolume,
     switchTrack,
-  };
+  }
 }
