@@ -25,11 +25,6 @@
   stroke-linecap: round;
   transform-origin: center;
   transform: rotate(-90deg);
-  transition: stroke-dashoffset 180ms ease;
-}
-
-.progressNoAnimation {
-  transition: none;
 }
 
 .knob {

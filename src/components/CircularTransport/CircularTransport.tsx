@@ -121,7 +121,7 @@ export function CircularTransport({
       >
         <circle className={styles.track} cx={CENTER} cy={CENTER} r={RADIUS} />
         <circle
-          className={`${styles.progress} ${isScrubbing ? styles.progressNoAnimation : ''}`}
+          className={styles.progress}
           cx={CENTER}
           cy={CENTER}
           r={RADIUS}
