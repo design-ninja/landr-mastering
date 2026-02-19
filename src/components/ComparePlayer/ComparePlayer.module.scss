@@ -1,7 +1,11 @@
 .card {
   border-radius: 1.35rem;
   border: 1px solid var(--border-muted);
-  background: linear-gradient(155deg, rgb(255 255 255 / 3%), rgb(255 255 255 / 1%));
+  background: linear-gradient(
+    155deg,
+    rgb(255 255 255 / 3%),
+    rgb(255 255 255 / 1%)
+  );
   box-shadow: 0 34px 54px -38px rgb(0 0 0 / 78%);
   backdrop-filter: blur(9px);
   padding: clamp(1.35rem, 4vw, 2rem) clamp(1rem, 3vw, 1.5rem);

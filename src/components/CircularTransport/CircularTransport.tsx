@@ -16,7 +16,8 @@ const RADIUS = 116
 const START_SNAP_THRESHOLD = 0.04
 const START_WRAP_GUARD = 0.94
 
-const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
+const clamp = (value: number, min: number, max: number) =>
+  Math.min(max, Math.max(min, value))
 
 export function CircularTransport({
   isPlaying,
@@ -56,7 +57,10 @@ export function CircularTransport({
 
       if (rawProgress <= START_SNAP_THRESHOLD) {
         nextProgress = 0
-      } else if (clampedProgress <= START_SNAP_THRESHOLD && rawProgress >= START_WRAP_GUARD) {
+      } else if (
+        clampedProgress <= START_SNAP_THRESHOLD &&
+        rawProgress >= START_WRAP_GUARD
+      ) {
         nextProgress = 0
       }
 
@@ -136,7 +140,11 @@ export function CircularTransport({
         {isPlaying ? (
           <span className={styles.pauseIcon} aria-hidden="true" />
         ) : (
-          <svg className={styles.playIcon} viewBox="0 0 24 24" aria-hidden="true">
+          <svg
+            className={styles.playIcon}
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+          >
             <path d="M7.5 5.2c0-1.24 1.37-1.99 2.41-1.31l8.33 5.3c0.95 0.61 0.95 2.01 0 2.62l-8.33 5.3c-1.04 0.67-2.41-0.08-2.41-1.31V5.2Z" />
           </svg>
         )}

@@ -17,8 +17,16 @@ body {
   font-family: var(--font-body);
   color: var(--text-primary);
   background:
-    radial-gradient(circle at 14% 8%, rgb(42 80 108 / 24%) 0%, rgb(42 80 108 / 0%) 38%),
-    radial-gradient(circle at 88% 20%, rgb(34 216 224 / 11%) 0%, rgb(34 216 224 / 0%) 34%),
+    radial-gradient(
+      circle at 14% 8%,
+      rgb(42 80 108 / 24%) 0%,
+      rgb(42 80 108 / 0%) 38%
+    ),
+    radial-gradient(
+      circle at 88% 20%,
+      rgb(34 216 224 / 11%) 0%,
+      rgb(34 216 224 / 0%) 34%
+    ),
     linear-gradient(165deg, var(--bg-main) 0%, var(--bg-secondary) 100%);
 }
 

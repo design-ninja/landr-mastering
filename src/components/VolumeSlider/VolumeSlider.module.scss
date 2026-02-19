@@ -39,7 +39,11 @@
 .slider::-webkit-slider-runnable-track {
   height: 0.35rem;
   border-radius: 999px;
-  background: linear-gradient(to right, var(--accent) var(--progress), var(--track-linear) var(--progress));
+  background: linear-gradient(
+    to right,
+    var(--accent) var(--progress),
+    var(--track-linear) var(--progress)
+  );
 }
 
 .slider::-webkit-slider-thumb {

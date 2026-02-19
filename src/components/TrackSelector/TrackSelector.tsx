@@ -7,9 +7,17 @@ interface TrackSelectorProps {
   onSelect: (trackId: TrackId) => void
 }
 
-export function TrackSelector({ tracks, activeTrackId, onSelect }: TrackSelectorProps) {
+export function TrackSelector({
+  tracks,
+  activeTrackId,
+  onSelect,
+}: TrackSelectorProps) {
   return (
-    <div className={styles.container} role="tablist" aria-label="Track variant selector">
+    <div
+      className={styles.container}
+      role="tablist"
+      aria-label="Track variant selector"
+    >
       {tracks.map((track) => {
         const isActive = track.id === activeTrackId
 

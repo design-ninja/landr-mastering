@@ -53,7 +53,10 @@
   place-items: center;
   cursor: pointer;
   box-shadow: 0 24px 45px -28px rgb(0 0 0 / 75%);
-  transition: transform 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
+  transition:
+    transform 180ms ease,
+    box-shadow 180ms ease,
+    background-color 180ms ease;
 }
 
 .button:hover {

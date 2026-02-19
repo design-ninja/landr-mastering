@@ -6,7 +6,8 @@ const INITIAL_VOLUME = 0.7
 const SWITCH_CROSSFADE_SECONDS = 0.015
 const START_LEAD_TIME_SECONDS = 0.005
 
-const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
+const clamp = (value: number, min: number, max: number) =>
+  Math.min(max, Math.max(min, value))
 
 type ActivePlayback = {
   gain: GainNode
@@ -21,7 +22,6 @@ export interface ComparePlayerController {
   currentTime: number
   duration: number
   volume: number
-  isReady: boolean
   isLibraryReady: boolean
   readyTrackCount: number
   totalTracks: number
@@ -32,14 +32,19 @@ export interface ComparePlayerController {
   switchTrack: (nextTrackId: TrackId) => void
 }
 
-export function useComparePlayer(tracks: TrackVariant[]): ComparePlayerController {
+export function useComparePlayer(
+  tracks: TrackVariant[],
+): ComparePlayerController {
   if (!tracks.length) {
     throw new Error('useComparePlayer requires at least one track')
   }
 
   const initialTrack = tracks[0]
   const totalTracks = tracks.length
-  const trackMap = useMemo(() => new Map(tracks.map((track) => [track.id, track])), [tracks])
+  const trackMap = useMemo(
+    () => new Map(tracks.map((track) => [track.id, track])),
+    [tracks],
+  )
 
   const audioContextRef = useRef<AudioContext | null>(null)
   const masterGainRef = useRef<GainNode | null>(null)
@@ -61,7 +66,6 @@ export function useComparePlayer(tracks: TrackVariant[]): ComparePlayerControlle
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
   const [volume, setVolumeState] = useState(INITIAL_VOLUME)
-  const [isReady, setIsReady] = useState(false)
   const [readyTrackCount, setReadyTrackCount] = useState(0)
   const [error, setError] = useState<string | null>(null)
 
@@ -91,7 +95,10 @@ export function useComparePlayer(tracks: TrackVariant[]): ComparePlayerControlle
     return context
   }, [])
 
-  const getTrackDuration = useCallback((trackId: TrackId) => buffersRef.current.get(trackId)?.duration ?? 0, [])
+  const getTrackDuration = useCallback(
+    (trackId: TrackId) => buffersRef.current.get(trackId)?.duration ?? 0,
+    [],
+  )
 
   const getTransportTime = useCallback(
     (trackId: TrackId, context: AudioContext | null) => {
@@ -104,7 +111,10 @@ export function useComparePlayer(tracks: TrackVariant[]): ComparePlayerControlle
         return clamp(transportOffsetRef.current, 0, trackDuration)
       }
 
-      const elapsed = Math.max(0, context.currentTime - transportStartContextTimeRef.current)
+      const elapsed = Math.max(
+        0,
+        context.currentTime - transportStartContextTimeRef.current,
+      )
       const nextTime = transportOffsetRef.current + elapsed
 
       return clamp(nextTime, 0, trackDuration)
@@ -132,7 +142,12 @@ export function useComparePlayer(tracks: TrackVariant[]): ComparePlayerControlle
   }, [])
 
   const scheduleStopPlayback = useCallback(
-    (playback: ActivePlayback | null, context: AudioContext, when: number, fadeOutSeconds: number) => {
+    (
+      playback: ActivePlayback | null,
+      context: AudioContext,
+      when: number,
+      fadeOutSeconds: number,
+    ) => {
       if (!playback) {
         return
       }
@@ -254,11 +269,14 @@ export function useComparePlayer(tracks: TrackVariant[]): ComparePlayerControlle
           buffersRef.current.set(track.id, buffer)
 
           if (activeTrackIdRef.current === track.id) {
-            const safeTime = clamp(transportOffsetRef.current, 0, Math.max(0, buffer.duration - SWITCH_TIME_PADDING))
+            const safeTime = clamp(
+              transportOffsetRef.current,
+              0,
+              Math.max(0, buffer.duration - SWITCH_TIME_PADDING),
+            )
             transportOffsetRef.current = safeTime
             setDuration(buffer.duration)
             setCurrentTime(safeTime)
-            setIsReady(true)
           }
         })
         .catch(() => {
@@ -268,7 +286,6 @@ export function useComparePlayer(tracks: TrackVariant[]): ComparePlayerControlle
 
           if (activeTrackIdRef.current === track.id) {
             setError('Audio failed to load')
-            setIsReady(false)
           }
         })
         .finally(() => {
@@ -311,7 +328,12 @@ export function useComparePlayer(tracks: TrackVariant[]): ComparePlayerControlle
       const context = audioContextRef.current
 
       if (playbackRef.current && context) {
-        scheduleStopPlayback(playbackRef.current, context, context.currentTime, 0)
+        scheduleStopPlayback(
+          playbackRef.current,
+          context,
+          context.currentTime,
+          0,
+        )
       }
 
       pauseNonActiveSources(null)
@@ -348,7 +370,12 @@ export function useComparePlayer(tracks: TrackVariant[]): ComparePlayerControlle
       setIsPlaying(false)
 
       if (playbackRef.current) {
-        scheduleStopPlayback(playbackRef.current, context, context.currentTime, SWITCH_CROSSFADE_SECONDS)
+        scheduleStopPlayback(
+          playbackRef.current,
+          context,
+          context.currentTime,
+          SWITCH_CROSSFADE_SECONDS,
+        )
         playbackRef.current = null
       }
 
@@ -364,7 +391,12 @@ export function useComparePlayer(tracks: TrackVariant[]): ComparePlayerControlle
       }
 
       const startAt = context.currentTime + START_LEAD_TIME_SECONDS
-      const nextPlayback = createPlayback(activeId, startAt, startOffset, SWITCH_CROSSFADE_SECONDS)
+      const nextPlayback = createPlayback(
+        activeId,
+        startAt,
+        startOffset,
+        SWITCH_CROSSFADE_SECONDS,
+      )
 
       if (!nextPlayback) {
         setError('Audio failed to play')
@@ -380,15 +412,25 @@ export function useComparePlayer(tracks: TrackVariant[]): ComparePlayerControlle
     }
 
     if (context.state === 'suspended') {
-      void context.resume().then(startPlayback).catch(() => {
-        setError('Audio failed to play')
-        setIsPlaying(false)
-      })
+      void context
+        .resume()
+        .then(startPlayback)
+        .catch(() => {
+          setError('Audio failed to play')
+          setIsPlaying(false)
+        })
       return
     }
 
     startPlayback()
-  }, [createPlayback, ensureAudioContext, getTransportTime, isLibraryReady, pauseNonActiveSources, scheduleStopPlayback])
+  }, [
+    createPlayback,
+    ensureAudioContext,
+    getTransportTime,
+    isLibraryReady,
+    pauseNonActiveSources,
+    scheduleStopPlayback,
+  ])
 
   const seek = useCallback(
     (timeInSeconds: number) => {
@@ -413,7 +455,12 @@ export function useComparePlayer(tracks: TrackVariant[]): ComparePlayerControlle
 
       const switchAt = context.currentTime + START_LEAD_TIME_SECONDS
       const oldPlayback = playbackRef.current
-      const nextPlayback = createPlayback(activeId, switchAt, safeTime, SWITCH_CROSSFADE_SECONDS)
+      const nextPlayback = createPlayback(
+        activeId,
+        switchAt,
+        safeTime,
+        SWITCH_CROSSFADE_SECONDS,
+      )
       if (!nextPlayback) {
         return
       }
@@ -423,7 +470,12 @@ export function useComparePlayer(tracks: TrackVariant[]): ComparePlayerControlle
       transportStartContextTimeRef.current = nextPlayback.startAt
 
       if (oldPlayback) {
-        scheduleStopPlayback(oldPlayback, context, switchAt, SWITCH_CROSSFADE_SECONDS)
+        scheduleStopPlayback(
+          oldPlayback,
+          context,
+          switchAt,
+          SWITCH_CROSSFADE_SECONDS,
+        )
       }
     },
     [createPlayback, scheduleStopPlayback],
@@ -456,7 +508,9 @@ export function useComparePlayer(tracks: TrackVariant[]): ComparePlayerControlle
       const nextBuffer = buffersRef.current.get(nextTrackId)
       const nextDuration = nextBuffer?.duration ?? 0
 
-      const transportTime = context ? getTransportTime(currentTrackId, context) : transportOffsetRef.current
+      const transportTime = context
+        ? getTransportTime(currentTrackId, context)
+        : transportOffsetRef.current
       const maxOffset = Math.max(0, nextDuration - SWITCH_TIME_PADDING)
       const nextOffset = clamp(transportTime, 0, maxOffset)
 
@@ -466,7 +520,6 @@ export function useComparePlayer(tracks: TrackVariant[]): ComparePlayerControlle
       transportOffsetRef.current = nextOffset
       setCurrentTime(nextOffset)
       setDuration(nextDuration)
-      setIsReady(Boolean(nextBuffer))
       setError(nextBuffer ? null : 'Audio failed to load')
 
       if (!isPlayingRef.current || !context || !nextBuffer) {
@@ -475,7 +528,12 @@ export function useComparePlayer(tracks: TrackVariant[]): ComparePlayerControlle
 
       const switchAt = context.currentTime + START_LEAD_TIME_SECONDS
       const oldPlayback = playbackRef.current
-      const nextPlayback = createPlayback(nextTrackId, switchAt, nextOffset, SWITCH_CROSSFADE_SECONDS)
+      const nextPlayback = createPlayback(
+        nextTrackId,
+        switchAt,
+        nextOffset,
+        SWITCH_CROSSFADE_SECONDS,
+      )
       if (!nextPlayback) {
         setError('Audio failed to play')
         setIsPlaying(false)
@@ -487,7 +545,12 @@ export function useComparePlayer(tracks: TrackVariant[]): ComparePlayerControlle
       transportStartContextTimeRef.current = nextPlayback.startAt
 
       if (oldPlayback) {
-        scheduleStopPlayback(oldPlayback, context, switchAt, SWITCH_CROSSFADE_SECONDS)
+        scheduleStopPlayback(
+          oldPlayback,
+          context,
+          switchAt,
+          SWITCH_CROSSFADE_SECONDS,
+        )
       }
     },
     [createPlayback, getTransportTime, scheduleStopPlayback],
@@ -502,7 +565,6 @@ export function useComparePlayer(tracks: TrackVariant[]): ComparePlayerControlle
     currentTime,
     duration,
     volume,
-    isReady,
     isLibraryReady,
     readyTrackCount,
     totalTracks,

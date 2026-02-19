@@ -18,7 +18,10 @@
   font-size: 0.89rem;
   font-weight: 500;
   cursor: pointer;
-  transition: border-color 180ms ease, background-color 180ms ease, color 180ms ease;
+  transition:
+    border-color 180ms ease,
+    background-color 180ms ease,
+    color 180ms ease;
 }
 
 .trackButton:hover {

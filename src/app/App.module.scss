@@ -13,7 +13,11 @@
   width: min(55rem, 95vw);
   height: min(55rem, 95vw);
   border-radius: 50%;
-  background: radial-gradient(circle, rgb(34 216 224 / 16%) 0%, rgb(34 216 224 / 0%) 65%);
+  background: radial-gradient(
+    circle,
+    rgb(34 216 224 / 16%) 0%,
+    rgb(34 216 224 / 0%) 65%
+  );
   transform: translateY(-16%);
   pointer-events: none;
 }
