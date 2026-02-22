@@ -1,0 +1,43 @@
+.container {
+  display: inline-flex;
+  justify-self: center;
+  height: fit-content;
+  border-radius: 0.6rem;
+  border: 1px solid var(--border-muted);
+  background: rgb(255 255 255 / 2%);
+  overflow: hidden;
+  margin-bottom: 0.85rem;
+}
+
+.option {
+  padding: 0.5rem 1rem;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition:
+    background-color 180ms ease,
+    color 180ms ease;
+}
+
+.option:hover:not(.active):not(:disabled) {
+  color: var(--text-secondary);
+}
+
+.option:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}
+
+.option:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.active {
+  background: rgb(34 216 224 / 16%);
+  color: var(--text-primary);
+}

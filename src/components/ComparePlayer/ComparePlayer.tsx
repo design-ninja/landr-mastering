@@ -1,11 +1,17 @@
-import { TRACKS } from '../../data/tracks'
+import { useMemo, useState } from 'react'
+import { buildTracks, DEFAULT_FORMAT } from '../../data/tracks'
 import { useComparePlayer } from '../../hooks/useComparePlayer'
+import type { AudioFormat } from '../../types/audio'
 import { CircularTransport } from '../CircularTransport/CircularTransport'
+import { FormatToggle } from '../FormatToggle/FormatToggle'
 import { TrackSelector } from '../TrackSelector/TrackSelector'
 import { VolumeSlider } from '../VolumeSlider/VolumeSlider'
 import styles from './ComparePlayer.module.scss'
 
 export function ComparePlayer() {
+  const [format, setFormat] = useState<AudioFormat>(DEFAULT_FORMAT)
+  const tracks = useMemo(() => buildTracks(format), [format])
+
   const {
     activeTrack,
     activeTrackId,
@@ -21,7 +27,7 @@ export function ComparePlayer() {
     totalTracks,
     togglePlay,
     volume,
-  } = useComparePlayer(TRACKS)
+  } = useComparePlayer(tracks)
 
   const progress = duration > 0 ? currentTime / duration : 0
   const sourceName = activeTrack.file.split('/').at(-1) ?? 'track.mp3'
@@ -30,11 +36,6 @@ export function ComparePlayer() {
 
   return (
     <article className={styles.card} aria-label="Master comparison player">
-      <header className={styles.header}>
-        <p className={styles.mode}>{activeTrack.label}</p>
-        <p className={styles.fileName}>{sourceName}</p>
-      </header>
-
       {!isLibraryReady ? (
         <div className={styles.preload} role="status" aria-live="polite">
           <div className={styles.preloadSpinner} aria-hidden="true" />
@@ -51,6 +52,12 @@ export function ComparePlayer() {
         </div>
       ) : (
         <>
+          <header className={styles.header}>
+            <FormatToggle format={format} onChange={setFormat} />
+            <p className={styles.mode}>{activeTrack.label}</p>
+            <p className={styles.fileName}>{sourceName}</p>
+          </header>
+
           <CircularTransport
             isPlaying={isPlaying}
             progress={progress}
@@ -60,7 +67,7 @@ export function ComparePlayer() {
           />
 
           <TrackSelector
-            tracks={TRACKS}
+            tracks={tracks}
             activeTrackId={activeTrackId}
             onSelect={switchTrack}
           />

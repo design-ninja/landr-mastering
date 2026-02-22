@@ -237,6 +237,15 @@ export function useComparePlayer(
     const context = ensureAudioContext()
     let isDisposed = false
 
+    // Stop current playback and clear buffers when tracks change (format switch)
+    if (playbackRef.current) {
+      scheduleStopPlayback(playbackRef.current, context, context.currentTime, 0)
+      playbackRef.current = null
+    }
+    setIsPlaying(false)
+    buffersRef.current = new Map()
+    setReadyTrackCount(0)
+
     const decodeCache = new Map<string, Promise<AudioBuffer>>()
 
     const decodeFile = (file: string) => {
@@ -300,6 +309,7 @@ export function useComparePlayer(
     return () => {
       isDisposed = true
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ensureAudioContext, totalTracks, tracks])
 
   useEffect(() => {

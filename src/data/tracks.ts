@@ -1,28 +1,24 @@
-import type { TrackVariant } from '../types/audio'
+import type { AudioFormat, TrackVariant } from '../types/audio'
 
-export const TRACKS: TrackVariant[] = [
-  {
-    id: 'original',
-    label: 'Original',
-    file: '/audio/nwy-original.mp3',
-    badge: 'A',
-  },
-  {
-    id: 'master-1',
-    label: 'Warm',
-    file: '/audio/nwy-original.mp3',
-    badge: 'B',
-  },
-  {
-    id: 'master-2',
-    label: 'Balanced',
-    file: '/audio/nwy-original.mp3',
-    badge: 'C',
-  },
-  {
-    id: 'master-3',
-    label: 'Open',
-    file: '/audio/nwy-original.mp3',
-    badge: 'D',
-  },
+export const DEFAULT_FORMAT: AudioFormat = 'mp3'
+
+const BASE_TRACKS: Omit<TrackVariant, 'file'>[] = [
+  { id: 'original', label: 'Original', badge: 'A' },
+  { id: 'master-1', label: 'Warm', badge: 'B' },
+  { id: 'master-2', label: 'Balanced', badge: 'C' },
+  { id: 'master-3', label: 'Open', badge: 'D' },
 ]
+
+const FILE_MAP: Record<string, string> = {
+  original: 'nwy-original',
+  'master-1': 'nwy-warm',
+  'master-2': 'nwy-balanced',
+  'master-3': 'nwy-open',
+}
+
+export function buildTracks(format: AudioFormat): TrackVariant[] {
+  return BASE_TRACKS.map((track) => ({
+    ...track,
+    file: `/audio/${format}/${FILE_MAP[track.id]}.${format}`,
+  }))
+}
